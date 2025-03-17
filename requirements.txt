@@ -2,3 +2,8 @@ azure-storage-blob
 pymupdf4llm
 tiktoken
 azure-cosmos
+streamlit
+streamlit_extras
+plotly
+pandas
+altair
