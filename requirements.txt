@@ -1,0 +1,4 @@
+azure-storage-blob
+pymupdf4llm
+tiktoken
+azure-cosmos
