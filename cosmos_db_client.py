@@ -164,3 +164,137 @@ class CosmosDBClient:
             self.container.delete_item(item, partition_key=item["id"])
         
         print(f"Deleted {len(items)} chunks for document {source_document_id}")
+
+    def full_text_search(self, query_text, top_k=5):
+        """
+        Perform full-text search on document content.
+        
+        Args:
+            query_text (str): The search query text
+            top_k (int): Number of results to return
+            
+        Returns:
+            list: List of matching documents
+        """
+        # Split the query text into words for full-text search
+        query_terms = query_text.split()
+        query_terms_list = ', '.join([f'"{term}"' for term in query_terms])
+
+        query = f"""
+        SELECT TOP {top_k} 
+            c.id, 
+            c.content, 
+            c.metadata, 
+            c.sourceDocumentId, 
+            c.chunkIndex
+        FROM c ORDER BY RANK FullTextScore(c.content, [{query_terms_list}])
+        """
+        
+        results = list(self.container.query_items(
+            query=query,
+            enable_cross_partition_query=True
+        ))
+        
+        # Add search score property to results
+        for i, item in enumerate(results):
+            # Since Cosmos SQL doesn't return search score directly, we simulate it
+            item["searchScore"] = 1.0 - (i * (0.7 / len(results))) if results else 0
+            
+        return results
+
+    def vector_search(self, embedding, top_k=5, min_similarity=0.7):
+        """
+        Perform vector search using cosine similarity.
+        
+        Args:
+            embedding (list): The query embedding vector
+            top_k (int): Number of results to return
+            min_similarity (float): Minimum similarity threshold (0-1)
+            
+        Returns:
+            list: List of matching documents with similarity scores
+        """
+        # Use vector search capability
+        query = f"""
+        SELECT TOP {top_k} 
+            c.id, 
+            c.content, 
+            c.metadata, 
+            c.sourceDocumentId, 
+            c.chunkIndex,
+            VectorDistance(c.embedding, @embedding) AS searchScore 
+        FROM c 
+        WHERE VectorDistance(c.embedding, @embedding) > @minSimilarity 
+        ORDER BY VectorDistance(c.embedding, @embedding)
+        """
+
+        parameters = [
+            {"name": "@embedding", "value": embedding},
+            {"name": "@minSimilarity", "value": min_similarity}
+        ]
+        
+        results = list(self.container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True
+        ))
+        
+        return results
+        
+    def hybrid_search(self, query_text, embedding, top_k=5, min_similarity=0.7, 
+                       vector_weight=0.5, text_weight=0.5):
+        """
+        Perform hybrid search combining vector similarity and text search.
+        
+        Args:
+            query_text (str): The search query text
+            embedding (list): The query embedding vector
+            top_k (int): Number of results to return
+            min_similarity (float): Minimum similarity threshold (0-1)
+            vector_weight (float): Weight for vector search results (0-1)
+            text_weight (float): Weight for text search results (0-1)
+            
+        Returns:
+            list: List of matching documents
+        """
+        query = f"""
+        SELECT TOP {top_k} 
+            c.id, 
+            c.content, 
+            c.metadata, 
+            c.sourceDocumentId,
+            c.chunkIndex,
+            (COSINE_SIMILARITY_SCORE(c.embedding, @embedding) * {vector_weight} + 
+             FTS_SCORE(c) * {text_weight}) AS searchScore
+        FROM c 
+        WHERE CONTAINS(c.content, @queryText) 
+        AND COSINE_SIMILARITY(c.embedding, @embedding) > @minSimilarity
+        ORDER BY searchScore DESC
+        """
+        
+        parameters = [
+            {"name": "@embedding", "value": embedding},
+            {"name": "@minSimilarity", "value": min_similarity},
+            {"name": "@queryText", "value": query_text}
+        ]
+        
+        results = list(self.container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True
+        ))
+        
+        return results
+    
+    def get_unique_document_sources(self):
+        """
+        Get a list of all unique source document IDs in the database.
+        
+        Returns:
+            list: List of unique source document IDs
+        """
+        query = "SELECT DISTINCT VALUE c.sourceDocumentId FROM c"
+        return list(self.container.query_items(
+            query=query,
+            enable_cross_partition_query=True
+        ))
