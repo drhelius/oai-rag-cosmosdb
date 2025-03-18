@@ -17,8 +17,6 @@ class CosmosDBClient:
         
         self.database = self._get_or_create_database(database_name)
         self.container = self._get_or_create_container(container_name)
-        
-        print(f"Connected to CosmosDB database '{database_name}', container '{container_name}'")
     
     def _get_or_create_database(self, database_name):
         return self.client.create_database_if_not_exists(database_name)

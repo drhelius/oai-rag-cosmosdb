@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 docs/
+temp_uploads/
 
 # C extensions
 *.so

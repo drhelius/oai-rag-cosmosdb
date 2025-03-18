@@ -26,7 +26,5 @@ class OpenAIClient:
             max_retries=0,
             timeout=15
         )
-    
-        print(f"OpenAI client initialized with endpoint: {endpoint}, api_version: {api_version}")
 
         return client

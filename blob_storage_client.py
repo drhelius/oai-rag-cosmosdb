@@ -9,7 +9,6 @@ class BlobStorageClient:
         connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         self.container_name = container_name
-        print(f"Connected to Azure Blob Storage container '{container_name}'")
 
     def upload_file(self, local_file_path, blob_name=None):
         try:
