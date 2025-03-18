@@ -46,21 +46,15 @@ class SearchService:
         
         return results, search_metrics
     
-    def hybrid_search(self, query_text, top_k=5, min_similarity=0.7, weights=None):
-        """Perform hybrid search (combination of vector and text) in CosmosDB."""
-        # Default weights if not provided
-        if weights is None:
-            weights = {"vector": 0.5, "text": 0.5}
+    def hybrid_search(self, query_text, top_k=5, min_similarity=0.7):
+        """Perform hybrid search (combination of vector and text) using RRF in CosmosDB."""
             
         start_time = time.time()
         embedding = self.embedding_generator.generate_embedding(query_text)
         results = self.cosmos_db.hybrid_search(
             query_text=query_text, 
             embedding=embedding, 
-            top_k=top_k, 
-            min_similarity=min_similarity,
-            vector_weight=weights["vector"],
-            text_weight=weights["text"]
+            top_k=top_k
         )
         search_time = time.time() - start_time
         
@@ -69,7 +63,6 @@ class SearchService:
             "query_time_ms": search_time * 1000,
             "results_count": len(results),
             "embedding_dimensions": len(embedding) if embedding else 0,
-            "weights": weights
         }
         
         return results, search_metrics

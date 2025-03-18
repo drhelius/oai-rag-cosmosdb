@@ -352,24 +352,6 @@ def display_search_tab():
                 key="search_embedding_model"  # Added unique key
             )
             
-            st.session_state.search_settings["vector_weight"] = st.slider(
-                "Vector Weight (Hybrid Search)", 
-                min_value=0.0, 
-                max_value=1.0, 
-                value=st.session_state.search_settings["vector_weight"],
-                step=0.1,
-                key="search_vector_weight"  # Added unique key
-            )
-            
-            st.session_state.search_settings["text_weight"] = st.slider(
-                "Text Weight (Hybrid Search)", 
-                min_value=0.0, 
-                max_value=1.0, 
-                value=st.session_state.search_settings["text_weight"],
-                step=0.1,
-                key="search_text_weight"  # Added unique key
-            )
-            
             st.session_state.compare_mode = st.toggle(
                 "Compare Search Methods", 
                 value=st.session_state.compare_mode,
@@ -588,15 +570,10 @@ def display_search_tab():
                             min_similarity=st.session_state.search_settings["min_similarity"]
                         )
                     else:  # Hybrid Search
-                        weights = {
-                            "vector": st.session_state.search_settings["vector_weight"],
-                            "text": st.session_state.search_settings["text_weight"]
-                        }
                         results, metrics = search_service.hybrid_search(
                             query,
                             top_k=st.session_state.search_settings["top_k"],
-                            min_similarity=st.session_state.search_settings["min_similarity"],
-                            weights=weights
+                            min_similarity=st.session_state.search_settings["min_similarity"]
                         )
                     
                     # Add to search history

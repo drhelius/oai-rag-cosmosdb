@@ -44,7 +44,5 @@ METRICS = {
 SEARCH_CONFIG = {
     "top_k": 5,
     "min_similarity": 0.7,
-    "embedding_model": "text_embedding_3_small",
-    "vector_weight": 0.5,
-    "text_weight": 0.5
+    "embedding_model": "text_embedding_3_small"
 }
