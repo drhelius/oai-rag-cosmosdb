@@ -7,11 +7,12 @@ from streamlit_extras.switch_page_button import switch_page
 import plotly.express as px
 from datetime import datetime
 
-from app_config import DEFAULT_SETTINGS, UI_CONFIG, METRICS, SEARCH_CONFIG
+from app_config import DEFAULT_SETTINGS, UI_CONFIG, METRICS, SEARCH_CONFIG, CHAT_CONFIG
 from app_utils import save_uploaded_file, validate_file, clear_temp_files, format_time
 from document_processor import DocumentProcessor
 from cosmos_db_client import CosmosDBClient
 from search_service import SearchService
+from chat_service import ChatService
 
 # Initialize app
 def init_app():
@@ -36,6 +37,20 @@ def init_app():
         st.session_state.search_settings = SEARCH_CONFIG.copy()
     if "compare_mode" not in st.session_state:
         st.session_state.compare_mode = False
+    
+    # Add chat-specific session state
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+    if "chat_settings" not in st.session_state:
+        st.session_state.chat_settings = CHAT_CONFIG.copy()
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    if "chat_metrics" not in st.session_state:
+        st.session_state.chat_metrics = {"total_queries": 0, "avg_response_time": 0}
+    if "show_chat_settings" not in st.session_state:
+        st.session_state.show_chat_settings = False
+    if "show_context" not in st.session_state:
+        st.session_state.show_context = False
     
     # App title and description
     st.title("📚 CosmosDB RAG Demo")
@@ -630,9 +645,271 @@ def display_search_results(results, metrics):
             st.markdown("**Technical Details:**")
             st.json(result)
 
-# LLM chat tab (placeholder)  
+# LLM chat tab with RAG  
 def display_chat_tab():
-    st.info("LLM chat functionality coming soon!")
+    st.title("💬 Chat with Your Documents")
+    st.markdown("""
+    Ask questions about your documents and get AI-powered answers using the power of CosmosDB's search capabilities.
+    The AI will use document content as context to provide accurate responses.
+    """)
+    
+    # Initialize CosmosDB client
+    cosmos_db = CosmosDBClient(
+        st.session_state.settings["cosmos_db_name"],
+        st.session_state.settings["cosmos_container_name"]
+    )
+    
+    # Initialize chat service
+    chat_service = ChatService(
+        cosmos_db,
+        model_id=st.session_state.chat_settings["llm_model"],
+        embedding_model=st.session_state.chat_settings["embedding_model"]
+    )
+    
+    # Create columns for chat interface
+    col1, col2 = st.columns([3, 1])
+    
+    # Right column - Settings and metrics
+    with col2:
+        # Chat settings
+        with st.expander("Chat Settings", expanded=True):
+            st.session_state.chat_settings["search_type"] = st.selectbox(
+                "Context Search Method",
+                ["hybrid", "vector", "text"],
+                index=["hybrid", "vector", "text"].index(st.session_state.chat_settings["search_type"]),
+                help="Method used to retrieve document context for the AI",
+                key="chat_search_type"
+            )
+            
+            st.session_state.chat_settings["top_k"] = st.slider(
+                "Number of context chunks",
+                min_value=1,
+                max_value=10,
+                value=st.session_state.chat_settings["top_k"],
+                help="How many document chunks to retrieve for context",
+                key="chat_top_k"
+            )
+            
+            st.session_state.chat_settings["min_similarity"] = st.slider(
+                "Minimum similarity score",
+                min_value=0.0,
+                max_value=1.0,
+                value=st.session_state.chat_settings["min_similarity"],
+                step=0.05,
+                help="Minimum similarity threshold for vector search (not used in text search)",
+                key="chat_min_similarity"
+            )
+            
+            st.session_state.chat_settings["llm_model"] = st.selectbox(
+                "LLM Model",
+                ["gpt4o_1", "gpt35_turbo"],
+                index=0 if st.session_state.chat_settings["llm_model"] == "gpt4o_1" else 1,
+                help="Large Language Model used for generating responses",
+                key="chat_llm_model"
+            )
+            
+            st.session_state.chat_settings["temperature"] = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=1.0,
+                value=st.session_state.chat_settings["temperature"],
+                step=0.1,
+                help="Controls randomness of responses (lower = more deterministic)",
+                key="chat_temperature"
+            )
+            
+            st.session_state.show_context = st.toggle(
+                "Show retrieved context",
+                value=st.session_state.show_context,
+                help="Display the document context used for generating responses",
+                key="chat_show_context"
+            )
+        
+        # Chat metrics
+        with st.expander("Chat Analytics", expanded=True):
+            if st.session_state.chat_history:
+                col1_metrics, col2_metrics = st.columns(2)
+                
+                with col1_metrics:
+                    st.metric("Total Queries", st.session_state.chat_metrics["total_queries"])
+                    st.metric("Avg. Response Time", f"{st.session_state.chat_metrics['avg_response_time']:.2f}ms")
+                
+                with col2_metrics:
+                    last_query = st.session_state.chat_history[-1]
+                    st.metric("Last Query Time", f"{last_query['metrics'].get('elapsed_time_ms', 0):.2f}ms")
+                    st.metric("Context Chunks", last_query['metrics'].get('results_retrieved', 0))
+                
+                # Search type distribution
+                search_types = [chat["metrics"]["search_type"] for chat in st.session_state.chat_history]
+                search_type_counts = {t: search_types.count(t) for t in set(search_types)}
+                
+                search_df = pd.DataFrame({
+                    "Search Type": list(search_type_counts.keys()),
+                    "Count": list(search_type_counts.values())
+                })
+                
+                st.subheader("Search Methods Used")
+                fig = px.pie(
+                    search_df, 
+                    values='Count', 
+                    names='Search Type', 
+                    color='Search Type',
+                    hole=0.4, 
+                    height=200
+                )
+                fig.update_layout(margin=dict(l=5, r=5, t=5, b=5))
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Response time trends
+                if len(st.session_state.chat_history) > 1:
+                    response_times = [
+                        {
+                            "Query": i+1, 
+                            "Time (ms)": chat["metrics"].get("elapsed_time_ms", 0),
+                            "Type": chat["metrics"]["search_type"]
+                        } 
+                        for i, chat in enumerate(st.session_state.chat_history[-10:])  # Last 10 queries
+                    ]
+                    response_df = pd.DataFrame(response_times)
+                    
+                    st.subheader("Response Time Trends")
+                    fig = px.line(
+                        response_df, 
+                        x="Query", 
+                        y="Time (ms)", 
+                        color="Type", 
+                        markers=True,
+                        height=200
+                    )
+                    fig.update_layout(margin=dict(l=5, r=5, t=5, b=5))
+                    st.plotly_chart(fig, use_container_width=True)
+    
+    # Left column - Chat interface
+    with col1:
+        # Display chat messages
+        chat_container = st.container()
+        
+        with chat_container:
+            # Display chat history
+            for message in st.session_state.chat_messages:
+                with st.chat_message(message["role"]):
+                    st.write(message["content"])
+            
+            # Add placeholder for streaming response
+            response_placeholder = st.empty()
+        
+        # Chat input and buttons
+        chat_input_container = st.container()
+        
+        with chat_input_container:
+            # User input row with buttons
+            col_input, col_buttons = st.columns([4, 1])
+            
+            with col_input:
+                user_input = st.chat_input("Ask a question about your documents", key="chat_user_input")
+            
+            with col_buttons:
+                clear_chat = st.button("🗑️ Clear Chat", key="clear_chat_button")
+                if clear_chat:
+                    st.session_state.chat_messages = []
+                    st.rerun()
+        
+        # Process user input
+        if user_input:
+            # Add user message to chat
+            st.session_state.chat_messages.append({"role": "user", "content": user_input})
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.write(user_input)
+            
+            # Check if documents are available
+            try:
+                doc_sources = cosmos_db.get_unique_document_sources()
+                if not doc_sources:
+                    with st.chat_message("assistant"):
+                        st.write("I don't have any documents indexed yet. Please upload and process some documents in the 'Document Loading & Indexing' tab first.")
+                    st.session_state.chat_messages.append({"role": "assistant", "content": "I don't have any documents indexed yet. Please upload and process some documents in the 'Document Loading & Indexing' tab first."})
+                    return
+            except Exception as e:
+                with st.chat_message("assistant"):
+                    st.write(f"Error connecting to document database: {str(e)}. Please check your settings and try again.")
+                st.session_state.chat_messages.append({"role": "assistant", "content": f"Error connecting to document database: {str(e)}. Please check your settings and try again."})
+                return
+            
+            # Format messages for OpenAI API
+            formatted_messages = [
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in st.session_state.chat_messages
+                if msg["role"] in ["user", "assistant", "system"]
+            ]
+            
+            # Display assistant response with streaming
+            with st.chat_message("assistant"):
+                full_response = ""
+                message_placeholder = st.empty()
+                
+                # Start spinner during initial context retrieval
+                with st.spinner("Retrieving document context..."):
+                    # Process streaming response
+                    context = None
+                    metrics = None
+                    
+                    # Use the chat service to generate a response with RAG
+                    for content_chunk, result in chat_service.chat_with_rag(
+                        query=user_input,
+                        messages=formatted_messages,
+                        search_type=st.session_state.chat_settings["search_type"],
+                        top_k=st.session_state.chat_settings["top_k"],
+                        min_similarity=st.session_state.chat_settings["min_similarity"]
+                    ):
+                        if content_chunk is not None:
+                            # This is a content chunk
+                            full_response += content_chunk
+                            message_placeholder.markdown(full_response + "▌")
+                        elif isinstance(result, dict) and "context_retrieval_time_ms" in result:
+                            # This is metrics information
+                            metrics = result
+                            
+                            # Update chat metrics
+                            st.session_state.chat_metrics["total_queries"] += 1
+                            current_avg = st.session_state.chat_metrics["avg_response_time"]
+                            query_count = st.session_state.chat_metrics["total_queries"]
+                            new_time = metrics.get("elapsed_time_ms", 0)
+                            
+                            # Compute running average
+                            st.session_state.chat_metrics["avg_response_time"] = (
+                                (current_avg * (query_count - 1) + new_time) / query_count
+                            )
+                            
+                            # Store in chat history
+                            st.session_state.chat_history.append({
+                                "query": user_input,
+                                "response": full_response,
+                                "metrics": metrics,
+                                "timestamp": datetime.now().strftime("%H:%M:%S")
+                            })
+                        elif result is not None:
+                            # This is an error message
+                            message_placeholder.error(f"Error: {result}")
+                            full_response = f"Error: {result}"
+                
+                # Show final response without cursor
+                message_placeholder.markdown(full_response)
+                
+                # Display context if enabled
+                if st.session_state.show_context and metrics:
+                    with st.expander("📄 Context Used", expanded=False):
+                        st.caption(f"Retrieved {metrics.get('results_retrieved', 0)} document chunks using {metrics.get('search_type', 'unknown')} search")
+                        st.info(f"Query execution time: {metrics.get('context_retrieval_time_ms', 0):.2f}ms")
+                        
+                        # Show search results visualization if available
+                        if "search_metrics" in metrics and "results_count" in metrics["search_metrics"]:
+                            search_metrics = metrics["search_metrics"]
+                            st.caption(f"Found {search_metrics['results_count']} results in {search_metrics['query_time_ms']:.2f}ms")
+                
+            # Add assistant response to chat history
+            st.session_state.chat_messages.append({"role": "assistant", "content": full_response})
 
 # Main function
 def main():
@@ -643,7 +920,7 @@ def main():
     tab1, tab2, tab3 = st.tabs([
         "📄 Document Loading & Indexing", 
         "🔍 Document Search",
-        "💬 LLM Chat (Coming Soon)"
+        "💬 LLM Chat with RAG"
     ])
     
     # Document Loading & Indexing Tab
@@ -662,7 +939,7 @@ def main():
     with tab2:
         display_search_tab()
         
-    # LLM Chat Tab (placeholder)
+    # LLM Chat with RAG Tab
     with tab3:
         display_chat_tab()
 

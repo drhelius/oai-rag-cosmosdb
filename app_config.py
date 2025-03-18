@@ -46,3 +46,18 @@ SEARCH_CONFIG = {
     "min_similarity": 0.7,
     "embedding_model": "text_embedding_3_small"
 }
+
+# Chat configuration
+CHAT_CONFIG = {
+    "llm_model": "gpt4o_1",
+    "embedding_model": "text_embedding_3_small",
+    "search_type": "hybrid",
+    "top_k": 3,
+    "min_similarity": 0.7,
+    "temperature": 0.7,
+    "system_prompt": """You are an AI assistant helping with questions about documents stored in a database.
+For each user question, relevant document excerpts will be provided as context.
+Base your answers primarily on this context. If the context doesn't contain the answer, say so clearly.
+Always cite your sources by mentioning the Document ID when you reference information from the context.
+Keep your answers clear, helpful, and accurate."""
+}
