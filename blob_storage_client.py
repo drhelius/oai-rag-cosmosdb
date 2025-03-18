@@ -9,13 +9,18 @@ class BlobStorageClient:
         connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         self.container_name = container_name
+        print(f"Connected to Azure Blob Storage container '{container_name}'")
 
     def upload_file(self, local_file_path, blob_name=None):
-        blob_name = blob_name or os.path.basename(local_file_path)
-        blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
-        with open(local_file_path, "rb") as data:
-            blob_client.upload_blob(data, overwrite=True)
-            print(f"Uploaded {blob_name} to Azure Blob Storage.")
+        try:
+            blob_name = blob_name or os.path.basename(local_file_path)
+            blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
+            with open(local_file_path, "rb") as data:
+                blob_client.upload_blob(data, overwrite=True)
+                print(f"Uploaded {blob_name} to Azure Blob Storage.")
+        except Exception as e:
+            print(f"Failed to upload {local_file_path} to Azure Blob Storage: {e}")
+            raise e
 
     def download_file(self, blob_name, download_file_path):
         blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)

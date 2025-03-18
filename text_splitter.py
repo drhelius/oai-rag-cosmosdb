@@ -21,7 +21,6 @@ class TextSplitter:
                 chunk_tokens = tokens[start:min(end, len(tokens))]
                 chunk_text = self.encoding.decode(chunk_tokens)
                 
-                # Create chunk with content and metadata
                 chunks.append({
                     "content": chunk_text,
                     "metadata": {

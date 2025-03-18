@@ -17,7 +17,6 @@ class DocumentProcessor:
                                      overlap_tokens=config["overlap_tokens"])
         self.embedding_generator = EmbeddingGenerator(model_id=config["embedding_model"])
         
-        # Metrics tracking
         self.metrics = {
             "document_count": 0,
             "total_pages": 0,
@@ -29,14 +28,13 @@ class DocumentProcessor:
         }
     
     def process_document(self, file_path, progress_bar=None, status_text=None):
-        """Process a single document through the complete pipeline."""
         start_time = time.time()
         doc_metrics = {"filename": os.path.basename(file_path)}
         
         if status_text:
             status_text.text("1/5: Uploading to Blob Storage...")
         
-        # 1. Upload original PDF to blob storage
+        # Upload original PDF to blob storage
         blob_name = os.path.basename(file_path)
         self.blob_client.upload_file(local_file_path=file_path)
         blob_url = self.blob_client.get_blob_url(blob_name)
@@ -47,7 +45,7 @@ class DocumentProcessor:
         if status_text:
             status_text.text("2/5: Converting PDF to text...")
         
-        # 2. Convert PDF to Markdown and get pages data
+        # Convert PDF to Markdown and get pages data
         pages = PdfConverter.pdf_to_markdown(file_path)
         doc_metrics["pages"] = len(pages)
         self.metrics["total_pages"] += len(pages)
@@ -57,7 +55,7 @@ class DocumentProcessor:
         if status_text:
             status_text.text("3/5: Splitting into chunks...")
         
-        # 3. Split markdown content into chunks
+        # Split markdown content into chunks
         chunks = self.splitter.split_pages(pages)
         doc_metrics["chunks"] = len(chunks)
         self.metrics["total_chunks"] += len(chunks)
@@ -67,7 +65,7 @@ class DocumentProcessor:
         if status_text:
             status_text.text("4/5: Generating embeddings...")
         
-        # 4. Generate embeddings for chunks
+        # Generate embeddings for chunks
         embedding_start_time = time.time()
         embeddings = self.embedding_generator.generate_embeddings_for_chunks([chunk["content"] for chunk in chunks])
         embedding_time = time.time() - embedding_start_time
@@ -91,12 +89,12 @@ class DocumentProcessor:
         if status_text:
             status_text.text("5/5: Storing in CosmosDB...")
         
-        # 5. Combine chunks with their embeddings and add metadata
+        # Combine chunks with their embeddings and add metadata
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             chunk["embedding"] = embedding
             chunk["metadata"]["source_url"] = blob_url
         
-        # 6. Upload chunks to CosmosDB
+        # Upload chunks to CosmosDB
         document_id = generate_document_id(file_path)
         doc_metrics["document_id"] = document_id
         cosmos_ids = self.cosmos_db_client.upsert_document_chunks(chunks, source_document_id=document_id)

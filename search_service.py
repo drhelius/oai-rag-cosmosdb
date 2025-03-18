@@ -3,13 +3,6 @@ from embedding_generator import EmbeddingGenerator
 
 class SearchService:
     def __init__(self, cosmos_db_client, embedding_model="text_embedding_3_small"):
-        """
-        Service for performing different types of searches against CosmosDB.
-        
-        Args:
-            cosmos_db_client: CosmosDBClient instance
-            embedding_model: Model to use for embedding generation
-        """
         self.cosmos_db = cosmos_db_client
         self.embedding_generator = EmbeddingGenerator(model_id=embedding_model)
         
@@ -29,11 +22,9 @@ class SearchService:
         
     def vector_search(self, query_text, top_k=5, min_similarity=0.7):
         """Perform vector similarity search in CosmosDB."""
-        # Generate embedding for query text
         start_time = time.time()
         embedding = self.embedding_generator.generate_embedding(query_text)
         
-        # Perform vector search
         results = self.cosmos_db.vector_search(embedding, top_k, min_similarity)
         search_time = time.time() - start_time
         

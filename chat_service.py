@@ -1,31 +1,20 @@
 import time
-import json
 from openai_utils import OpenAIClient
 from search_service import SearchService
 
 class ChatService:
     def __init__(self, cosmos_db_client, model_id="gpt4o_1", embedding_model="text_embedding_3_small"):
-        """
-        Service for chat interactions with RAG capabilities using different search methods.
-        
-        Args:
-            cosmos_db_client: CosmosDBClient instance
-            model_id: LLM model to use for chat
-            embedding_model: Model to use for embeddings in vector search
-        """
         self.model_id = model_id
         self.client = OpenAIClient(model_id=model_id)
         self.openai = self.client.get_client()
         self.deployment_name = self.client.deployment_name
         
-        # Create search service for retrieving context
         self.search_service = SearchService(cosmos_db_client, embedding_model=embedding_model)
         
-        # Default system message
         self.default_system_message = """You are an AI assistant helping with questions about documents stored in a database.
 For each user question, relevant document excerpts will be provided as context.
 Base your answers primarily on this context. If the context doesn't contain the answer, say so clearly.
-Always cite your sources by mentioning the Document ID when you reference information from the context.
+Always cite your sources by mentioning the Document ID when you reference information from the context. Give the user the URL of the document if available.
 Keep your answers clear, helpful, and accurate."""
     
     def format_context_for_prompt(self, results):
@@ -37,31 +26,19 @@ Keep your answers clear, helpful, and accurate."""
             content = result.get('content', '')
             score = result.get('searchScore', 0)
             page = result.get('metadata', {}).get('page', 'unknown')
+            url = result.get('metadata', {}).get('source_url', 'unknown')
             
-            context_parts.append(f"[Document {i+1}] ID: '{doc_id}', Page: {page}, Relevance: {score:.2f}\n{content}\n")
+            context_parts.append(f"[Document {i+1}] ID: '{doc_id}', Page: {page}, Relevance: {score:.2f}, URL: {url}\n{content}\n")
             
         if context_parts:
             return "Here are relevant excerpts from documents:\n\n" + "\n".join(context_parts)
         return "No relevant context found."
     
     def generate_chat_response(self, messages, context=None, stream=True):
-        """
-        Generate a chat response with optional context from RAG.
-        
-        Args:
-            messages: List of message dictionaries (role, content)
-            context: Optional context from document retrieval
-            stream: Whether to stream the response
-            
-        Returns:
-            Response from the LLM and metrics about the request
-        """
         start_time = time.time()
         
-        # Deep copy messages to avoid modifying the original
         augmented_messages = messages.copy()
         
-        # If we have context, add it to the system message or create one if none exists
         if context:
             system_found = False
             for i, msg in enumerate(augmented_messages):
@@ -76,7 +53,6 @@ Keep your answers clear, helpful, and accurate."""
                     "content": f"{self.default_system_message}\n\n{context}"
                 })
         
-        # Generate response
         token_count = 0
         response_text = ""
         
@@ -123,20 +99,6 @@ Keep your answers clear, helpful, and accurate."""
         yield None, metrics
     
     def chat_with_rag(self, query, messages, search_type="hybrid", top_k=3, min_similarity=0.7, stream=True):
-        """
-        Chat using RAG with the specified search type.
-        
-        Args:
-            query: User query for context retrieval 
-            messages: Chat history as list of message dictionaries
-            search_type: Type of search to use (text, vector, hybrid)
-            top_k: Number of results to retrieve
-            min_similarity: Minimum similarity for vector search
-            stream: Whether to stream the response
-            
-        Returns:
-            Generator yielding response chunks and metrics
-        """
         # Step 1: Retrieve relevant context using the specified search method
         start_time = time.time()
         context_results = []

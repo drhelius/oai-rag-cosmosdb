@@ -5,7 +5,6 @@ Dynamically loads model configurations from environment variables.
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 def _discover_models():
@@ -15,22 +14,18 @@ def _discover_models():
     """
     models = {}
     
-    # Find all variables that match DEPLOYMENT_NAME_*
     deployment_vars = [v for v in os.environ if v.startswith('DEPLOYMENT_NAME_')]
     
     for var in deployment_vars:
-        # Extract the suffix (everything after "DEPLOYMENT_NAME_")
         suffix = var.replace('DEPLOYMENT_NAME_', '')
         model_id = suffix.lower()
         
-        # Check if all required variables exist for this suffix
         required_vars_exist = all(
             f"{key}_{suffix}" in os.environ
             for key in ["ENDPOINT", "API_KEY", "API_VERSION", "DEPLOYMENT_NAME", "API_TYPE"]
         )
         
         if required_vars_exist:
-            # Get the display name from MODEL_{suffix} if available, otherwise use deployment name
             display_name = os.environ.get(f"MODEL_{suffix}", os.environ[var])
             
             models[model_id] = {
@@ -40,7 +35,6 @@ def _discover_models():
     
     return models
 
-# Build models dictionary once at import time
 MODELS = _discover_models()
 
 def get_model_names():

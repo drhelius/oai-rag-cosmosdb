@@ -1,10 +1,5 @@
 import os
 import time
-import uuid
-import shutil
-import tempfile
-from pathlib import Path
-import streamlit as st
 from app_config import UI_CONFIG
 
 def create_temp_dir():
@@ -47,7 +42,7 @@ def clear_temp_files():
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
             except Exception as e:
-                st.error(f"Error deleting {file_path}: {e}")
+                print(f"Error deleting {file_path}: {e}")
 
 def generate_document_id(file_path):
     """Generate a unique document ID based on filename and timestamp."""
